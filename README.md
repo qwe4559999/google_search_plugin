@@ -50,6 +50,8 @@ pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
 - `max_results` (int): 每次搜索返回给模型阅读的结果数量。
 - `timeout` (int): 后端搜索引擎的超时时间。
 - `proxy` (str): 用于后端搜索的HTTP/HTTPS代理地址，例如 'http://127.0.0.1:7890'。默认为空字符串，表示不使用代理。
+- `reverse_proxy.enabled` (bool): 是否开启反代访问（作用于搜索请求和内容抓取）。
+- `reverse_proxy.base_url` (str): 反代前缀，例如 `https://proxy.4559999.xyz/sysuchem/https/`，会自动拼接原始目标域名和路径。
 - `fetch_content` (bool): 是否抓取网页正文供模型阅读。
 - `content_timeout` (int): 网页抓取的超时时间。
 - `max_content_length` (int): 抓取的单个网页最大内容长度。

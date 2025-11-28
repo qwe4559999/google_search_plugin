@@ -50,6 +50,26 @@ class BaseSearchEngine:
         self.max_results = self.config.get("max_results", 10)
         self.headers = HEADERS.copy()
         self.proxy = self.config.get("proxy")
+        self.reverse_proxy = self.config.get("reverse_proxy", {})
+
+    def _apply_reverse_proxy(self, url: str) -> str:
+        """根据配置将 URL 转换为反代地址。"""
+        cfg = self.reverse_proxy if isinstance(self.reverse_proxy, dict) else {}
+        base_url = (cfg or {}).get("base_url", "").rstrip("/")
+        if not cfg or not cfg.get("enabled") or not base_url:
+            return url
+        if url.startswith(base_url):
+            return url
+        try:
+            parsed = urlparse(url)
+            host_path = f"{parsed.netloc}{parsed.path or '/'}"
+            if parsed.query:
+                host_path = f"{host_path}?{parsed.query}"
+            if parsed.fragment:
+                host_path = f"{host_path}#{parsed.fragment}"
+            return f"{base_url}/{host_path.lstrip('/')}"
+        except Exception:
+            return url
 
     def _set_selector(self, selector: str) -> str:
         """获取页面元素选择器
@@ -84,18 +104,19 @@ class BaseSearchEngine:
             HTML字符串
         """
         headers = self.headers
-        headers["Referer"] = url
+        proxied_url = self._apply_reverse_proxy(url)
+        headers["Referer"] = proxied_url
         headers["User-Agent"] = random.choice(USER_AGENTS)
         async with aiohttp.ClientSession() as session:
             if data:
                 async with session.post(
-                    url, headers=headers, data=data, timeout=aiohttp.ClientTimeout(total=self.TIMEOUT), proxy=self.proxy
+                    proxied_url, headers=headers, data=data, timeout=aiohttp.ClientTimeout(total=self.TIMEOUT), proxy=self.proxy
                 ) as resp:
                     resp.raise_for_status()
                     return await resp.text()
             else:
                 async with session.get(
-                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.TIMEOUT), proxy=self.proxy
+                    proxied_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.TIMEOUT), proxy=self.proxy
                 ) as resp:
                     resp.raise_for_status()
                     return await resp.text()

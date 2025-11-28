@@ -82,7 +82,8 @@ class WebSearchTool(BaseTool):
         common_config = {
             "timeout": backend_config.get("timeout", 20),
             "proxy": backend_config.get("proxy"),
-            "max_results": backend_config.get("max_results", 10)
+            "max_results": backend_config.get("max_results", 10),
+            "reverse_proxy": backend_config.get("reverse_proxy", {}),
         }
         
         google_config = {**engines_config.get("google", {}), **common_config}
@@ -145,6 +146,25 @@ class WebSearchTool(BaseTool):
         if not parsed.netloc:
             return False
         return True
+
+    def _apply_reverse_proxy(self, url: str) -> str:
+        """根据配置将 URL 转换为反代地址"""
+        reverse_cfg = self.backend_config.get("reverse_proxy", {}) if isinstance(self.backend_config, dict) else {}
+        base_url = (reverse_cfg or {}).get("base_url", "").rstrip("/")
+        if not reverse_cfg or not reverse_cfg.get("enabled") or not base_url:
+            return url
+        if url.startswith(base_url):
+            return url
+        try:
+            parsed = urlparse(url)
+            host_path = f"{parsed.netloc}{parsed.path or '/'}"
+            if parsed.query:
+                host_path = f"{host_path}?{parsed.query}"
+            if parsed.fragment:
+                host_path = f"{host_path}#{parsed.fragment}"
+            return f"{base_url}/{host_path.lstrip('/')}"
+        except Exception:
+            return url
 
     async def _execute_direct_url_summary(self, url: str) -> str:
         """直接访问URL并总结其内容"""
@@ -643,7 +663,9 @@ class WebSearchTool(BaseTool):
             if proxy:
                 request_kwargs["proxy"] = proxy
 
-            async with session.get(url, **request_kwargs) as response:
+            target_url = self._apply_reverse_proxy(url)
+
+            async with session.get(target_url, **request_kwargs) as response:
                 if response.status != 200:
                     logger.warning(f"抓取内容失败，URL: {url}, 状态码: {response.status}")
                     return None
@@ -1006,6 +1028,10 @@ class google_search_simple(BasePlugin):
             "timeout": ConfigField(type=int, default=20, description="搜索超时时间（秒）"),
             "proxy": ConfigField(type=str, default="", description="用于搜索的HTTP/HTTPS代理地址，例如 'http://127.0.0.1:7890'。如果留空则不使用代理。"),
             "fetch_content": ConfigField(type=bool, default=True, description="是否抓取网页内容"),
+            "reverse_proxy": {
+                "enabled": ConfigField(type=bool, default=False, description="是否开启反代访问（对搜索请求和内容抓取生效）"),
+                "base_url": ConfigField(type=str, default="", description="反代前缀，例如 'https://proxy.4559999.xyz/sysuchem/https/'"),
+            },
             "content_timeout": ConfigField(type=int, default=10, description="内容抓取超时（秒）"),
             "max_content_length": ConfigField(type=int, default=3000, description="最大内容长度"),
             "user_agents": ConfigField(
